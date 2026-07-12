@@ -286,7 +286,7 @@
 <div class="wrap">
   <header>
     <div>
-      <p class="eyebrow">MONB FUTSAL</p>
+      <p class="eyebrow">MONBI FUTSAL</p>
       <h1>몬비 출석 &amp; 회수권 관리</h1>
       <p class="sub">출석 체크하면 회수권이 자동으로 차감됩니다</p>
     </div>
@@ -368,7 +368,7 @@
       </div>
     </div>
     <div class="field" id="startField">
-      <label>사용 기간 시작일</label>
+      <label>만료일</label>
       <input type="date" id="mStart">
     </div>
     <div class="modal-actions">
@@ -695,16 +695,34 @@ function addDays(dateStr, days){
   return d.toISOString().slice(0,10);
 }
 
+function addMonths(dateStr, months){
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0,10);
+}
+
+const WEEKS_BY_TYPE = { '4': 6, '8': 16 }; // 4회권=6주, 8회권=16주 (공지 기준)
+
+function weeksForType(type){
+  return WEEKS_BY_TYPE[type] ?? parseInt(type, 10);
+}
+
+// m.start에는 실제로 "만료일"이 저장돼 있음 (DB 컬럼명은 start로 유지, 의미상 만료일)
 function getExpiryDate(m){
+  return m.start || null;
+}
+
+// 만료일에서 역산한 시작일 (표시용)
+function getStartDate(m){
   if(!m.start) return null;
-  if(m.type === 'monthly'){
-    const d = new Date(m.start + 'T00:00:00');
-    d.setMonth(d.getMonth() + 1);
-    return d.toISOString().slice(0,10);
-  }
-  const weeksByType = { '4': 6, '8': 16 };
-  const weeks = weeksByType[m.type] ?? parseInt(m.type, 10);
-  return addDays(m.start, weeks * 7);
+  if(m.type === 'monthly') return addMonths(m.start, -1);
+  return addDays(m.start, -weeksForType(m.type) * 7);
+}
+
+// 신규 등록/충전 시 기본 만료일 제안 (오늘 기준)
+function suggestedExpiry(type){
+  if(type === 'monthly') return addMonths(todayStr(), 1);
+  return addDays(todayStr(), weeksForType(type) * 7);
 }
 
 function memberStatus(m){
@@ -789,7 +807,7 @@ function renderRosterTable(){
         </td>
         <td data-label="사용 기간">
           <div class="ring-wrap">
-            <span>${fmtDate(m.start)} ~ ${fmtDate(getExpiryDate(m))}</span>
+            <span>${fmtDate(getStartDate(m))} ~ ${fmtDate(m.start)}</span>
             ${expireBadge(m)}
           </div>
         </td>
@@ -846,10 +864,10 @@ document.getElementById('rechargeConfirm').addEventListener('click', async () =>
   m.type = String(n);
   m.total = n;
   m.used = 0;
-  m.start = todayStr();
+  m.start = suggestedExpiry(String(n));
   await upsertMember(m);
   render();
-  showToast(`${m.name}님 ${n}회권으로 충전되었습니다`);
+  showToast(`${m.name}님 ${n}회권으로 충전되었습니다 (만료 ${fmtDate(m.start)})`);
   rechargeTargetId = null;
 });
 
@@ -894,8 +912,8 @@ document.getElementById('saveAttendance').addEventListener('click', async () => 
 const addModal = document.getElementById('addModal');
 document.getElementById('openAdd').addEventListener('click', () => {
   document.getElementById('mName').value = '';
-  document.getElementById('mStart').value = todayStr();
   selectedType = '8';
+  document.getElementById('mStart').value = suggestedExpiry(selectedType);
   document.querySelectorAll('#typeToggle button').forEach(b => b.classList.toggle('active', b.dataset.type === '8'));
   addModal.classList.add('open');
 });
@@ -905,11 +923,12 @@ document.querySelectorAll('#typeToggle button').forEach(btn => {
     selectedType = btn.dataset.type;
     document.querySelectorAll('#typeToggle button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+    document.getElementById('mStart').value = suggestedExpiry(selectedType);
   });
 });
 document.getElementById('confirmAdd').addEventListener('click', async () => {
   const name = document.getElementById('mName').value.trim();
-  const start = document.getElementById('mStart').value || todayStr();
+  const expiry = document.getElementById('mStart').value || suggestedExpiry(selectedType);
   if(!name){
     showToast('이름을 입력해주세요');
     return;
@@ -922,7 +941,7 @@ document.getElementById('confirmAdd').addEventListener('click', async () => {
     type: selectedType,
     total: selectedType === 'monthly' ? null : parseInt(selectedType, 10),
     used: selectedType === 'monthly' ? null : 0,
-    start,
+    start: expiry,
     dates: []
   };
   roster.push(newMember);
