@@ -286,7 +286,7 @@
 <div class="wrap">
   <header>
     <div>
-      <p class="eyebrow">MONB FUTSAL</p>
+      <p class="eyebrow">MONBI FUTSAL</p>
       <h1>몬비 출석 &amp; 회수권 관리</h1>
       <p class="sub">출석 체크하면 회수권이 자동으로 차감됩니다</p>
     </div>
@@ -368,8 +368,9 @@
       </div>
     </div>
     <div class="field" id="startField">
-      <label>만료일</label>
-      <input type="date" id="mStart">
+      <label>구매일 (시작일)</label>
+      <input type="date" id="mPurchase">
+      <p class="cal-hint" id="expiryPreview" style="text-align:left;margin-top:8px;"></p>
     </div>
     <div class="modal-actions">
       <button class="btn ghost small" id="cancelAdd">취소</button>
@@ -910,11 +911,24 @@ document.getElementById('saveAttendance').addEventListener('click', async () => 
 
 // Add member modal
 const addModal = document.getElementById('addModal');
+
+function calcExpiryFromPurchase(purchaseDate, type){
+  if(type === 'monthly') return addMonths(purchaseDate, 1);
+  return addDays(purchaseDate, weeksForType(type) * 7);
+}
+
+function updateExpiryPreview(){
+  const purchase = document.getElementById('mPurchase').value || todayStr();
+  const expiry = calcExpiryFromPurchase(purchase, selectedType);
+  document.getElementById('expiryPreview').textContent = `→ 만료일: ${fmtDate(expiry)}`;
+}
+
 document.getElementById('openAdd').addEventListener('click', () => {
   document.getElementById('mName').value = '';
   selectedType = '8';
-  document.getElementById('mStart').value = suggestedExpiry(selectedType);
+  document.getElementById('mPurchase').value = todayStr();
   document.querySelectorAll('#typeToggle button').forEach(b => b.classList.toggle('active', b.dataset.type === '8'));
+  updateExpiryPreview();
   addModal.classList.add('open');
 });
 document.getElementById('cancelAdd').addEventListener('click', () => addModal.classList.remove('open'));
@@ -923,12 +937,14 @@ document.querySelectorAll('#typeToggle button').forEach(btn => {
     selectedType = btn.dataset.type;
     document.querySelectorAll('#typeToggle button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById('mStart').value = suggestedExpiry(selectedType);
+    updateExpiryPreview();
   });
 });
+document.getElementById('mPurchase').addEventListener('change', updateExpiryPreview);
 document.getElementById('confirmAdd').addEventListener('click', async () => {
   const name = document.getElementById('mName').value.trim();
-  const expiry = document.getElementById('mStart').value || suggestedExpiry(selectedType);
+  const purchase = document.getElementById('mPurchase').value || todayStr();
+  const expiry = calcExpiryFromPurchase(purchase, selectedType);
   if(!name){
     showToast('이름을 입력해주세요');
     return;
